@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Fire Response Coverage</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--red:#D93B1F;--red2:#b52d15;--border:#E4E7EC;--text:#101828;--sub:#475467;--muted:#98A2B3;--bg:#F7F8FA}
+html,body{height:100%;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text)}
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* HEADER */
+header{
+  flex-shrink:0;background:#fff;border-bottom:1px solid var(--border);
+  padding:0 28px;height:62px;display:flex;align-items:center;gap:14px;
+  box-shadow:0 1px 3px rgba(0,0,0,.06)
+}
+.hbadge{
+  background:var(--red);color:#fff;border-radius:9px;
+  padding:5px 11px;font-size:13px;font-weight:700;letter-spacing:.02em
+}
+header h1{font-size:17px;font-weight:700;color:var(--text)}
+header p{font-size:12px;color:var(--muted);margin-top:1px}
+
+/* FORM PANEL */
+#panel{
+  flex-shrink:0;background:#fff;border-bottom:2px solid var(--border);
+  padding:20px 28px;display:flex;flex-direction:column;gap:14px
+}
+#form-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12px;font-weight:600;color:var(--sub);text-transform:uppercase;letter-spacing:.05em}
+#stations{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.station-row{display:flex;gap:6px;align-items:stretch}
+.addr-input{
+  height:44px;flex:1;min-width:0;
+  border:2px solid var(--border);border-radius:8px;
+  padding:0 14px;font-size:14px;font-family:inherit;color:var(--text);
+  outline:none;transition:border .15s,box-shadow .15s
+}
+.addr-input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(217,59,31,.1)}
+.addr-input::placeholder{color:var(--muted)}
+.rm-btn{
+  width:36px;height:44px;border:1.5px solid var(--border);border-radius:8px;
+  background:#fff;color:var(--muted);font-size:20px;font-weight:600;
+  cursor:pointer;transition:all .15s;font-family:inherit;line-height:1
+}
+.rm-btn:hover{background:#FEE;border-color:var(--red);color:var(--red)}
+#add-station-btn{
+  background:none;border:none;color:#2F6F6B;font-size:13px;font-weight:600;
+  cursor:pointer;padding:4px 0;font-family:inherit
+}
+#add-station-btn:hover{text-decoration:underline}
+#add-station-btn:disabled{color:var(--muted);cursor:not-allowed;text-decoration:none}
+#pin-mode-btn{
+  background:none;border:1.5px solid #2F6F6B;color:#2F6F6B;border-radius:7px;
+  font-size:12px;font-weight:600;cursor:pointer;padding:5px 10px;
+  font-family:inherit;transition:all .15s;margin-left:8px
+}
+#pin-mode-btn:hover{background:#2F6F6B;color:#fff}
+#pin-mode-btn.active{background:#2F6F6B;color:#fff}
+#map.pin-mode{cursor:crosshair!important}
+.pin-station-row input{color:#2F6F6B;font-style:italic}
+select{
+  height:48px;border:2px solid var(--border);border-radius:10px;
+  padding:0 14px;font-size:14px;font-family:inherit;color:var(--text);
+  background:#fff;outline:none;cursor:pointer;transition:border .15s
+}
+select:focus{border-color:var(--red)}
+#run-btn{
+  height:48px;padding:0 28px;background:var(--red);color:#fff;border:none;
+  border-radius:10px;font-size:16px;font-weight:700;font-family:inherit;
+  cursor:pointer;transition:background .15s,transform .1s;white-space:nowrap;
+  box-shadow:0 2px 6px rgba(217,59,31,.3)
+}
+#run-btn:hover{background:var(--red2);box-shadow:0 4px 14px rgba(217,59,31,.35)}
+#run-btn:active{transform:scale(.97)}
+#run-btn:disabled{background:var(--muted);box-shadow:none;cursor:not-allowed;transform:none}
+
+/* STATUS */
+#status-bar{
+  display:flex;align-items:center;gap:10px;
+  font-size:14px;color:var(--sub);min-height:22px
+}
+#status-bar.err{color:var(--red)}
+#status-bar.ok{color:#027A48}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex-shrink:0;display:none}
+.dot.spin{display:block;background:var(--red);animation:blink 1s ease-in-out infinite}
+.dot.ok{display:block;background:#12B76A}
+.dot.err{display:block;background:var(--red)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* MAP */
+#mapwrap{flex:1;position:relative;min-height:0}
+#map{width:100%;height:100%}
+.leaflet-control-attribution{font-size:10px!important}
+
+/* RESULTS CARD */
+#results{
+  position:absolute;top:16px;left:16px;width:220px;
+  background:#fff;border:1px solid var(--border);border-radius:14px;
+  box-shadow:0 8px 28px rgba(0,0,0,.11);padding:16px;
+  display:none;z-index:999;animation:pop .2s ease
+}
+@keyframes pop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.rtitle{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px}
+.rrow{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 0;border-bottom:1px solid #F2F4F7;font-size:13px}
+.rrow:last-of-type{border:none}
+.rk{color:var(--sub)}
+.rv{font-weight:700;color:var(--text);text-align:right;max-width:120px;line-height:1.4}
+.legend{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.lrow{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub)}
+.lsw{width:22px;height:11px;border-radius:3px;flex-shrink:0}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="hbadge">🔥 FRC</div>
+    <div>
+      <h1>Fire Response Coverage</h1>
+      <p>Enter a station address to see the drive-time coverage zone on the map</p>
+    </div>
+  </header>
+
+  <div id="panel">
+    <div id="form-row">
+      <div class="field" style="flex:1;min-width:280px">
+        <label>Station Address(es) — up to 5</label>
+        <div id="stations">
+          <div class="station-row">
+            <input class="addr-input" type="text" placeholder="e.g. 2000 W Dove Rd, Westlake, TX 76262" value="2000 W Dove Rd, Westlake, TX 76262" autocomplete="off"/>
+            <button type="button" class="rm-btn" onclick="removeStation(this)" title="Remove" style="display:none">×</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:0">
+          <button type="button" id="add-station-btn" onclick="addStation()">+ Add another station</button>
+          <button type="button" id="pin-mode-btn" onclick="togglePinMode()" title="Click on map to drop a pin as a station location">📍 Drop pin on map</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Drive Time</label>
+        <select id="time-sel">
+          <option value="4">4 minutes</option>
+          <option value="5" selected>5 minutes</option>
+          <option value="6.5">6.5 minutes</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Zones</label>
+        <select id="zone-sel">
+          <option value="single">Single zone</option>
+          <option value="multi">4 + 5 + 6.5 min rings</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Turnout Time</label>
+        <select id="turnout-sel">
+          <option value="0">No turnout time</option>
+          <option value="60" selected>60 sec (NFPA)</option>
+          <option value="80">80 seconds</option>
+          <option value="90">90 seconds</option>
+          <option value="120">120 seconds</option>
+        </select>
+      </div>
+      <div class="field" style="justify-content:flex-end">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--sub);text-transform:none;letter-spacing:0;font-weight:500;height:48px;padding:0 4px;">
+          <input type="checkbox" id="boundary-toggle" checked style="width:16px;height:16px;cursor:pointer;accent-color:#2F6F6B;"/>
+          Show Westlake boundary
+        </label>
+      </div>
+      <div class="field" style="justify-content:flex-end">
+        <button id="run-btn" onclick="runMap()">▶ Run</button>
+      </div>
+    </div>
+    <div id="status-bar">
+      <div class="dot" id="dot"></div>
+      <span id="status-txt">Enter an address and press Run.</span>
+    </div>
+  </div>
+
+  <div id="mapwrap">
+    <div id="map"></div>
+    <div id="results">
+      <div class="rtitle">Coverage Results</div>
+      <div id="result-rows"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ZONE_STYLES = {
+  4:   { color: '#2F6F6B', opacity: 0.38 },
+  5:   { color: '#4FA39B', opacity: 0.28 },
+  6.5: { color: '#9FD8D2', opacity: 0.22 }
+};
+
+let map, layers = [], stationMarkers = [], boundaryLayer = null, boundaryData = null, pinModeActive = false;
+
+window.onload = function() {
+  map = L.map('map').setView([32.9, -97.05], 11);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> © <a href="https://carto.com">CARTO</a>',
+    maxZoom: 19
+  }).addTo(map);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('addr-input')) runMap();
+  });
+
+  // Clear map whenever all address inputs are emptied
+  document.getElementById('stations').addEventListener('input', function() {
+    const vals = Array.from(document.querySelectorAll('.addr-input')).map(i => i.value.trim());
+    if (vals.every(v => v === '')) {
+      clearMap();
+      document.getElementById('results').style.display = 'none';
+      setStatus('Enter an address and press Run.', '');
+    }
+  });
+  document.getElementById('boundary-toggle').addEventListener('change', toggleBoundary);
+  map.on('click', onMapClick);
+  loadBoundary();
+};
+
+function togglePinMode() {
+  pinModeActive = !pinModeActive;
+  const btn = document.getElementById('pin-mode-btn');
+  const mapEl = document.getElementById('map');
+  btn.classList.toggle('active', pinModeActive);
+  mapEl.classList.toggle('pin-mode', pinModeActive);
+  if (pinModeActive) {
+    setStatus('Pin mode on — click anywhere on the map to add a station location.', '');
+  } else {
+    setStatus('Pin mode off.', '');
+  }
+}
+
+async function onMapClick(e) {
+  if (!pinModeActive) return;
+  const stationsEl = document.getElementById('stations');
+  if (stationsEl.children.length >= 5) {
+    setStatus('Maximum 5 stations reached.', 'err');
+    return;
+  }
+  const lat = e.latlng.lat.toFixed(6);
+  const lng = e.latlng.lng.toFixed(6);
+  const coordStr = lat + ',' + lng;
+
+  // Determine target input — reuse empty first row or create new row
+  let targetInput = null;
+  const firstInput = stationsEl.querySelector('.addr-input');
+  if (firstInput && firstInput.value.trim() === '') {
+    targetInput = firstInput;
+  } else {
+    const row = document.createElement('div');
+    row.className = 'station-row';
+    row.innerHTML = '<input class="addr-input pin-coord" type="text" value="' + coordStr + '" autocomplete="off" readonly style="color:#2F6F6B;font-style:italic"/>' +
+                    '<button type="button" class="rm-btn" onclick="removeStation(this)" title="Remove">×</button>';
+    stationsEl.appendChild(row);
+    targetInput = row.querySelector('input');
+  }
+
+  // Show coordinates immediately while reverse geocoding
+  targetInput.value = coordStr;
+  targetInput.classList.add('pin-coord');
+  targetInput.style.color = '#2F6F6B';
+  targetInput.style.fontStyle = 'italic';
+  targetInput.setAttribute('readonly', true);
+  targetInput.setAttribute('data-coords', coordStr);
+  updateRemoveButtons();
+
+  if (stationsEl.children.length >= 5) {
+    document.getElementById('add-station-btn').disabled = true;
+    pinModeActive = false;
+    document.getElementById('pin-mode-btn').classList.remove('active');
+    document.getElementById('map').classList.remove('pin-mode');
+  }
+
+  setStatus('Resolving address for pin…', 'loading');
+
+  // Reverse geocode in background — replace coordinates with address
+  try {
+    const r = await fetch('/api/reversegeocode?lat=' + lat + '&lng=' + lng);
+    if (r.ok) {
+      const { label } = await r.json();
+      if (label) {
+        targetInput.value = label;
+        // Keep coordinates stored as data attribute for the geocode step
+        targetInput.setAttribute('data-coords', coordStr);
+      }
+    }
+    setStatus('Pin placed: ' + (targetInput.value) + '. Click again to add more, or press Run.', '');
+  } catch(_) {
+    setStatus('Pin placed. Click again to add more, or press Run.', '');
+  }
+}
+
+function addStation() {
+  const stations = document.getElementById('stations');
+  if (stations.children.length >= 5) return;
+  const row = document.createElement('div');
+  row.className = 'station-row';
+  row.innerHTML = '<input class="addr-input" type="text" placeholder="Additional station address" autocomplete="off"/>' +
+                  '<button type="button" class="rm-btn" onclick="removeStation(this)" title="Remove">×</button>';
+  stations.appendChild(row);
+  // Show remove buttons on all rows when there are 2+
+  updateRemoveButtons();
+  if (stations.children.length >= 5) document.getElementById('add-station-btn').disabled = true;
+  row.querySelector('input').focus();
+}
+
+function removeStation(btn) {
+  const row = btn.parentElement;
+  row.remove();
+  updateRemoveButtons();
+  document.getElementById('add-station-btn').disabled = false;
+  // Clear map if no addresses remain
+  const vals = Array.from(document.querySelectorAll('.addr-input')).map(i => i.value.trim());
+  if (vals.every(v => v === '')) {
+    clearMap();
+    document.getElementById('results').style.display = 'none';
+    setStatus('Enter an address and press Run.', '');
+  }
+}
+
+function updateRemoveButtons() {
+  const rows = document.querySelectorAll('#stations .station-row');
+  rows.forEach((row, i) => {
+    const btn = row.querySelector('.rm-btn');
+    if (btn) btn.style.display = rows.length > 1 ? 'block' : 'none';
+  });
+}
+
+async function loadBoundary() {
+  try {
+    const r = await fetch('/api/boundary');
+    if (!r.ok) return;
+    boundaryData = await r.json();
+    if (document.getElementById('boundary-toggle').checked) drawBoundary();
+  } catch(e) { console.warn('Boundary load failed:', e); }
+}
+
+function drawBoundary() {
+  if (!boundaryData || !boundaryData.geojson || boundaryLayer) return;
+  boundaryLayer = L.geoJSON(boundaryData.geojson, {
+    style: {
+      color: '#444',
+      weight: 2,
+      opacity: 0.9,
+      fillColor: '#000',
+      fillOpacity: 0,
+      dashArray: '6,4'
+    },
+    interactive: false
+  }).addTo(map);
+  boundaryLayer.bringToBack();
+}
+
+function removeBoundary() {
+  if (boundaryLayer) { map.removeLayer(boundaryLayer); boundaryLayer = null; }
+}
+
+function toggleBoundary() {
+  if (document.getElementById('boundary-toggle').checked) {
+    drawBoundary();
+  } else {
+    removeBoundary();
+  }
+}
+
+function setStatus(msg, state) {
+  document.getElementById('status-txt').textContent = msg;
+  document.getElementById('status-bar').className = state === 'err' ? 'err' : state === 'ok' ? 'ok' : '';
+  document.getElementById('dot').className = 'dot' + (state === 'loading' ? ' spin' : state === 'ok' ? ' ok' : state === 'err' ? ' err' : '');
+}
+
+function clearMap() {
+  layers.forEach(l => map.removeLayer(l)); layers = [];
+  stationMarkers.forEach(m => map.removeLayer(m)); stationMarkers = [];
+}
+
+function calcAreaMi(geo) {
+  const c = geo.features[0].geometry.coordinates[0];
+  let a = 0;
+  for (let i = 0, j = c.length - 1; i < c.length; j = i++) {
+    a += (c[j][0] + c[i][0]) * Math.PI / 180 * (c[i][1] - c[j][1]) * Math.PI / 180;
+  }
+  return (Math.abs(a / 2) * 6371 * 6371 * 0.386102).toFixed(1);
+}
+
+async function runMap() {
+  const inputs = Array.from(document.querySelectorAll('.addr-input'));
+  const addresses = inputs.map(i => i.value.trim()).filter(a => a.length > 0);
+  if (addresses.length === 0) { setStatus('Please enter at least one station address.', 'err'); return; }
+  const minutes = parseFloat(document.getElementById('time-sel').value);
+  const turnoutSec = parseInt(document.getElementById('turnout-sel').value);
+  const driveMinutes = Math.max(0.5, minutes - turnoutSec / 60);
+  const multi = document.getElementById('zone-sel').value === 'multi';
+
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('results').style.display = 'none';
+  clearMap();
+  setStatus('Looking up address…', 'loading');
+
+  try {
+    // ── 1. Geocode every station in parallel ──
+    setStatus('Looking up ' + addresses.length + ' address' + (addresses.length>1?'es':'') + '…', 'loading');
+    const inputs = Array.from(document.querySelectorAll('.addr-input'));
+    const stations = await Promise.all(addresses.map(async (addr, i) => {
+      // Check if it's a pin-dropped input with stored coords
+      const inputEl = inputs.find(el => el.value === addr || el.getAttribute('data-coords'));
+      const coords = inputEl ? inputEl.getAttribute('data-coords') : null;
+      const coordStr = coords || addr;
+      const coordMatch = coordStr.match(/(-?\d+\.\d+),(-?\d+\.\d+)/);
+      if (coordMatch) {
+        const lat = parseFloat(coordMatch[1]);
+        const lng = parseFloat(coordMatch[2]);
+        return { idx: i+1, addr, lat, lng, label: addr };
+      }
+      const r = await fetch('/api/geocode?address=' + encodeURIComponent(addr));
+      if (!r.ok) throw new Error('Address ' + (i+1) + ' lookup failed: ' + addr);
+      const { lat, lng, label } = await r.json();
+      return { idx: i+1, addr, lat, lng, label };
+    }));
+
+    // ── 2. Drop a marker for each station ──
+    stations.forEach(s => {
+      const marker = L.circleMarker([s.lat, s.lng], {
+        radius: 9, fillColor: '#D93B1F', color: '#fff', weight: 3, fillOpacity: 1
+      }).addTo(map).bindTooltip('Station ' + s.idx + ': ' + s.label, {direction:'top', offset:[0,-10]});
+      stationMarkers.push(marker);
+    });
+
+    // ── 3. Fetch isochrones for every station × every zone-time ──
+    const turnoutFraction = turnoutSec / 60;
+    const zoneMins = multi
+      ? [6.5 - turnoutFraction, 5 - turnoutFraction, 4 - turnoutFraction]
+      : [driveMinutes];
+
+    // Group results by zone-minute (so we can merge same-time zones across stations)
+    const byZone = {};
+
+    let stepCount = 0;
+    const totalSteps = stations.length * zoneMins.length;
+    for (const station of stations) {
+      for (const m of zoneMins) {
+        stepCount++;
+        setStatus('Calculating ' + m.toFixed(1) + '-min zone for station ' + station.idx + ' (' + stepCount + '/' + totalSteps + ')…', 'loading');
+        const isoRes = await fetch('/api/isochrone?lat=' + station.lat + '&lng=' + station.lng + '&minutes=' + m + '&profile=driving-car');
+        if (!isoRes.ok) {
+          const err = await isoRes.json().catch(() => ({}));
+          throw new Error(err.error || 'Zone calculation failed (' + isoRes.status + ')');
+        }
+        const geo = await isoRes.json();
+        const minutesKey = (m + turnoutFraction).toFixed(1); // store as response-time key (driveTime + turnout)
+        if (!byZone[minutesKey]) byZone[minutesKey] = { driveMin: m, geos: [] };
+        byZone[minutesKey].geos.push(geo);
+      }
+    }
+
+    // ── 4. Draw — largest response time first so smaller ones layer on top ──
+    const sortedKeys = Object.keys(byZone).sort((a,b) => parseFloat(b) - parseFloat(a));
+    const items = [];
+    const allCoords = [];
+
+    for (const key of sortedKeys) {
+      const responseMin = parseFloat(key);
+      const z = ZONE_STYLES[responseMin] || { color: '#2F6F6B', opacity: 0.30 };
+      let totalMi = 0;
+      // Draw each station's zone as a separate polygon, same color = visually merges
+      for (const geo of byZone[key].geos) {
+        const coords = geo.features[0].geometry.coordinates[0].map(([lo, la]) => [la, lo]);
+        const poly = L.polygon(coords, {
+          color: '#2F6F6B',
+          weight: 1.2,
+          opacity: 0.75,
+          fillColor: z.color,
+          fillOpacity: z.opacity,
+          smoothFactor: 2
+        }).addTo(map);
+        layers.push(poly);
+        allCoords.push(...coords);
+        totalMi += parseFloat(calcAreaMi(geo));
+      }
+      items.push({ min: responseMin, color: z.color, mi: totalMi.toFixed(1), stationCount: byZone[key].geos.length });
+    }
+
+    map.fitBounds(L.latLngBounds(allCoords), { padding: [50, 50] });
+
+    // ── 5. Results card ──
+    const primary = items.find(z => z.min === (multi ? 5 : minutes)) || items[0];
+    const stationList = stations.map(s => '<div style="font-size:11px;color:var(--sub);line-height:1.4;margin-bottom:2px">' + s.idx + '. ' + s.label + '</div>').join('');
+    document.getElementById('result-rows').innerHTML =
+      `<div class="rrow" style="flex-direction:column;align-items:flex-start;gap:4px"><span class="rk">Stations (${stations.length})</span><div style="text-align:left">${stationList}</div></div>
+       <div class="rrow"><span class="rk">Response time</span><span class="rv">${primary.min} min</span></div>
+       <div class="rrow"><span class="rk">Drive time</span><span class="rv">${(primary.min - turnoutSec/60).toFixed(1)} min</span></div>
+       <div class="rrow"><span class="rk">Turnout time</span><span class="rv">${turnoutSec} sec</span></div>
+       <div class="rrow"><span class="rk">Coverage*</span><span class="rv">${primary.mi} mi²</span></div>
+       <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.4">*sum of all stations; overlapping areas counted once visually but multiple times here</div>`;
+
+    document.getElementById('legend').innerHTML = multi
+      ? items.sort((a, b) => a.min - b.min).map(z =>
+          `<div class="lrow"><div class="lsw" style="background:${z.color}"></div>${z.min}-min combined — ${z.mi} mi²</div>`
+        ).join('') : '';
+
+    document.getElementById('results').style.display = 'block';
+    const turnoutNote = turnoutSec > 0 ? ' (' + (turnoutSec/60).toFixed(1) + ' min turnout subtracted)' : '';
+    setStatus('Done — ' + stations.length + ' station' + (stations.length>1?'s':'') + ', ' + (multi ? '3-zone rings' : minutes + '-min zone') + turnoutNote + '.', 'ok');
+
+  } catch (err) {
+    setStatus('Error: ' + err.message, 'err');
+  }
+
+  document.getElementById('run-btn').disabled = false;
+}
+</script>
+</body>
+</html>
